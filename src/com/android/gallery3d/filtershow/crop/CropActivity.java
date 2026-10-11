@@ -19,8 +19,10 @@ package com.android.gallery3d.filtershow.crop;
 import android.app.ActionBar;
 import android.app.Activity;
 import android.app.WallpaperManager;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
@@ -34,6 +36,7 @@ import android.graphics.RectF;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Process;
 import android.provider.MediaStore;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -98,6 +101,12 @@ public class CropActivity extends Activity {
         Intent intent = getIntent();
         setResult(RESULT_CANCELED, new Intent());
         mCropExtras = getExtrasFromIntent(intent);
+        if (!requestUrisGranted(intent)) {
+            Log.w(LOGTAG, "crop request without a grant for its source or output");
+            cannotLoadImage();
+            done();
+            return;
+        }
         if (mCropExtras != null && mCropExtras.getShowWhenLocked()) {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
         }
@@ -126,6 +135,36 @@ public class CropActivity extends Activity {
         }
     }
 
+    /**
+     * A crop request names a source image and may name an output location. Both are opened
+     * with this app's own access to shared storage, so without a check any app could have an
+     * image it cannot reach itself read back to it, or overwritten, once the user taps Save.
+     * <p>
+     * Accept only content URIs for which the caller has granted this app access with the
+     * request ({@link Intent#FLAG_GRANT_READ_URI_PERMISSION} for the source,
+     * {@link Intent#FLAG_GRANT_WRITE_URI_PERMISSION} for the output). The system hands out
+     * such a grant only if the caller has that access itself. Requests from this app's own
+     * screens are trusted.
+     */
+    private boolean requestUrisGranted(Intent intent) {
+        if (getPackageName().equals(getCallingPackage())) {
+            return true;
+        }
+        Uri source = intent.getData();
+        if (source != null && !isGranted(source, Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
+            return false;
+        }
+        Uri output = (mCropExtras == null) ? null : mCropExtras.getExtraOutput();
+        return output == null || isGranted(output, Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+    }
+
+    /** Whether this app holds an explicit grant on the URI; its own permissions do not count. */
+    private boolean isGranted(Uri uri, int modeFlags) {
+        return ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())
+                && checkUriPermission(uri, Process.myPid(), Process.myUid(), modeFlags)
+                        == PackageManager.PERMISSION_GRANTED;
+    }
+
     private void enableSave(boolean enable) {
         if (mSaveButton != null) {
             mSaveButton.setEnabled(enable);
@@ -143,7 +182,9 @@ public class CropActivity extends Activity {
     @Override
     public void onConfigurationChanged (Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        mCropView.configChanged();
+        if (mCropView != null) {
+            mCropView.configChanged();
+        }
     }
 
     /**
