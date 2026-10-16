@@ -158,7 +158,7 @@ public class CropActivity extends Activity {
         return output == null || isGranted(output, Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
     }
 
-    /** Whether this app holds an explicit grant on the URI; its own permissions do not count. */
+    /** Whether this app holds an explicit grant on the URI. Its own permissions do not count. */
     private boolean isGranted(Uri uri, int modeFlags) {
         return ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())
                 && checkUriPermission(uri, Process.myPid(), Process.myUid(), modeFlags)
